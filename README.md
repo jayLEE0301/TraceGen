@@ -23,7 +23,7 @@ Official repository for the project **TraceGen: World Modeling in 3D Trace-Space
 
 - **Camera motion compensation**: Estimating camera pose and depth, and applying world-to-camera alignment
 - **Speed retargeting**: Normalizing motion speeds across different embodiments
-- **3D point tracking**: Generating scene-level 3D trajectories for both robot and object motion
+- **3D point tracking**: Using predicted camera poses and depth to reconstruct scene-level 3D trajectories for both robot and object motion
 
 
 **Code Release**: Dec 15, 2025 (tentative)
