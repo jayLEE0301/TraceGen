@@ -6,7 +6,7 @@ Official repository for the project **TraceGen: World Modeling in 3D Trace-Space
 
 ## 📋 Release Schedule
 
-- **Code Release (TraceGen & TraceForge)**: Dec 15, 2025 (tentative)
+- **Code Release (TraceGen & TraceForge)**: Dec 20, 2025 (tentative)
 - **Dataset & Benchmark Release**: Dec 30, 2025 (tentative)
 
 
