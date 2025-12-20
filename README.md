@@ -9,7 +9,7 @@ Official repository for the project **TraceGen: World Modeling in 3D Trace-Space
 
 
 ## <img src="assets/trace_forge_logo.png" alt="TraceGen" height="20"> TraceForge
-
+![TraceForge Overview](assets/TraceForge.png)
 For the data generation pipeline **TraceForge** that prepares cross-embodiment 3D trace dataset for TraceGen training, please refer to  
 **[TraceForge GitHub Repository](https://github.com/Yoonkyo/TraceForge)**.
 
@@ -90,7 +90,7 @@ data/
 
 
 ## Training <img src="assets/trace_gen_logo.png" alt="TraceGen" height="20"> TraceGen
-
+![TraceGen Overview](assets/TraceGen.png)
 ### Important Configuration Guidelines
 
 **Training with Small Datasets**
