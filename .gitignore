@@ -1,0 +1,27 @@
+*pyc
+wandb/*
+checkpoints/
+*.pth
+*.ckpt
+*.pt
+
+train.local.yaml
+
+
+__pycache__/
+.ipynb_checkpoints/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.cache/
+*.egg-info/
+build/
+dist/
+
+
+# Misc
+.DS_Store
+.python-version
+.env
+.env.*
+dataset_cache/

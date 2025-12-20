@@ -1,0 +1,14 @@
+# Example local configuration overrides
+# Copy this file to train.local.yaml
+# and update with your paths
+
+# dataset directories
+data:
+    dataset_dirs:
+        - "/path/to/your/dataset1"
+        - "/path/to/your/dataset2"
+        # Add more dataset paths as needed
+
+# checkpoint logging directory
+logging:
+    checkpoint_dir: "/path/to/your/checkpoint/directory/"
