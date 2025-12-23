@@ -186,8 +186,6 @@ If you enable Weights & Biases logging (`logging.use_wandb=true`), you can monit
 
 ## Testing
 
-> 🚧 **Note**: Detailed testing documentation will be released soon.
-
 To evaluate a trained model on a test set:
 
 ```bash
@@ -196,6 +194,70 @@ python test_example.py \
   --resume /path/to/checkpoint.pth \
   --test /path/to/test/dataset \
   --output /path/to/output/directory
+```
+
+### Command-Line Arguments
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `--config` | Yes | - | Path to config file (e.g., `cfg/eval.yaml`) |
+| `--resume` | Yes | - | Path to trained model checkpoint |
+| `--test` | Yes | - | Path to test dataset directory |
+| `--output` | No | `./test_result` | Output folder for visualizations |
+| `--guidance_scale` | No | None | Single guidance scale for inference (overrides multi-scale generation) |
+| `--movement_threshold` | No | 0.002 | Minimum total movement to display trajectory |
+| `--max_trajectories` | No | 80 | Maximum number of trajectories to visualize |
+| `--num_samples_per_scale` | No | 10 | Number of samples per guidance scale |
+| `--debug` | No | False | Enable debug mode |
+
+### Test Dataset Format
+
+The test dataset directory should be organized as follows:
+
+```
+test_dataset/
+├── images/                    # Input images (PNG, JPG, JPEG)
+│   ├── image_001.png
+│   ├── image_002.png
+│   └── ...
+├── texts/
+│   └── label.json             # Text descriptions for each image
+├── depth/                     # (Optional) Depth maps as NPZ files
+│   ├── image_001.npz          # Contains 'depth' key with depth array
+│   └── ...
+└── sensored_depth/            # (Optional) Sensored depth as NPZ files
+    ├── image_001.npz
+    └── ...
+```
+
+The `label.json` file should map image names (without extension) to their text descriptions:
+
+```json
+{
+  "image_001": "Pick up the red cup from the table",
+  "image_002": "Move the blue block to the left",
+  ...
+}
+```
+
+### Example Usage
+
+```bash
+# Basic evaluation
+python test_example.py \
+  --config cfg/eval.yaml \
+  --resume checkpoints/tracegen_model.pth \
+  --test ./test_data \
+  --output ./results
+
+# With custom guidance scale
+python test_example.py \
+  --config cfg/eval.yaml \
+  --resume checkpoints/tracegen_model.pth \
+  --test ./test_data \
+  --output ./results \
+  --guidance_scale 7.5 \
+  --max_trajectories 50
 ```
 
 

@@ -83,7 +83,7 @@ fi
 # Single GPU training (fallback)
 if [ $NUM_GPUS -eq 1 ]; then
     echo "Starting single GPU training..."
-    python train_system2_flow_multigpu.py --config "$CONFIG_FILE" $ADDITIONAL_ARGS
+    python train.py --config "$CONFIG_FILE" $ADDITIONAL_ARGS
 else
     # Multi-GPU training with torchrun
     echo "Starting multi-GPU training with $NUM_GPUS GPUs..."
@@ -92,7 +92,7 @@ else
     torchrun \
         --standalone \
         --nproc_per_node=$NUM_GPUS \
-        train_system2_flow_multigpu.py \
+        train.py \
         --config "$CONFIG_FILE" \
         $ADDITIONAL_ARGS
 fi
