@@ -4,7 +4,7 @@ Official repository for the project **TraceGen: World Modeling in 3D Trace-Space
 
 **Project Website**: [tracegen.github.io](https://tracegen.github.io/)  
 **arXiv**: [2511.21690](https://arxiv.org/abs/2511.21690)
-
+### 🚧 Benchmark and Dataset: Coming Soon! (Jan 5)
 ![TraceGen Overview](assets/tracegen_fig2.png)
 
 
