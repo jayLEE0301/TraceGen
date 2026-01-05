@@ -150,7 +150,7 @@ class TrajectoryDiffusionTrainer:
         self.val_metrics = {
             'total_loss': [], 'diffusion_loss': [],
             'trajectory_mse': [], 'trajectory_mae': [],
-            'endpoint_mse': [], 'first_keypoint_mse': []
+            'endpoint_mse': []
         }
 
         # Initialize components
@@ -467,7 +467,7 @@ class TrajectoryDiffusionTrainer:
         # For computing validation metrics
         all_predictions = []
         all_targets = []
-
+        all_masks = []
         with torch.no_grad():
             pbar = tqdm(enumerate(self.val_loader),
                 total=len(self.val_loader),
@@ -552,7 +552,7 @@ class TrajectoryDiffusionTrainer:
                     
                     all_predictions.append(predicted_trajectory.cpu())
                     all_targets.append(target_trajectory.cpu())
-
+                    all_masks.append(trajectory_mask.cpu())
                     pbar.set_postfix({
                         "loss": f"{total_loss.item():.4f}",
                         "diff_loss": f"{diffusion_loss.item():.4f}",
@@ -588,7 +588,7 @@ class TrajectoryDiffusionTrainer:
         }
 
         trajectory_metrics = self._compute_trajectory_validation_metrics(
-            all_predictions, all_targets
+            all_predictions, all_targets, all_masks
         )
         val_metrics.update(trajectory_metrics)
 
@@ -747,7 +747,7 @@ class TrajectoryDiffusionTrainer:
         return save_dir
         
     def _compute_trajectory_validation_metrics(
-        self, pred_trajectories_list, target_trajectories_list
+        self, pred_trajectories_list, target_trajectories_list, mask_list
     ) -> Dict[str, float]:
         """Compute trajectory-specific validation metrics."""
         if not pred_trajectories_list or not target_trajectories_list:
@@ -757,6 +757,7 @@ class TrajectoryDiffusionTrainer:
         # Concatenate all predictions and targets
         all_pred_trajectories = torch.cat(pred_trajectories_list, dim=0)
         all_target_trajectories = torch.cat(target_trajectories_list, dim=0)
+        all_masks = torch.cat(mask_list, dim=0) if mask_list else None
 
         # Debug shapes
         logger.info(f"Pred shape before processing: {all_pred_trajectories.shape}")
@@ -775,58 +776,57 @@ class TrajectoryDiffusionTrainer:
             
             # Do the same for targets - flatten N dimension
             if all_target_trajectories.dim() == 4:
-                B_t = all_target_trajectories.size(0)
-                N = all_target_trajectories.size(1)
                 T_t = all_target_trajectories.size(2)
-                C_t = all_target_trajectories.size(3)
-                all_target_trajectories = all_target_trajectories.reshape(B_t * N, T_t, C_t)
-        
-        logger.info(f"Pred shape after reshape: {all_pred_trajectories.shape}")
-        logger.info(f"Target shape after reshape: {all_target_trajectories.shape}")
+                all_target_trajectories = all_target_trajectories.reshape(B * 400, T_t, C)
+            if all_masks is not None and all_masks.dim() == 4:
+                all_masks = all_masks.reshape(B * 400, T_t, -1)
 
-        # Handle trajectory dimension - remove first keypoint if needed
-        if all_target_trajectories.size(1) > all_pred_trajectories.size(1):
-            # Remove first keypoint from targets
-            all_target_trajectories = all_target_trajectories[:, 1:, :]
+        # Use same reconstruction logic as visualization: first GT + cumsum of relative steps
+        # Shapes now: [B, T, 2] (T = horizon) where target contains first keypoint then relative deltas
+        # Add first step from GT to pred to align lengths
+        pred_abs = torch.cat((all_target_trajectories[:, :1, :], all_pred_trajectories), dim=1)
+        gt_abs = all_target_trajectories
 
-        # Ensure TEMPORAL dimension (dim 1) matches
-        min_seq_len = min(
-            all_pred_trajectories.size(1), all_target_trajectories.size(1)
-        )
-        all_pred_trajectories = all_pred_trajectories[:, :min_seq_len, :]
-        all_target_trajectories = all_target_trajectories[:, :min_seq_len, :]
+        if not self.cfg.absolute_action:
+            pred_abs = torch.cumsum(pred_abs, dim=1)
+            gt_abs = torch.cumsum(gt_abs, dim=1)
+        else:
+            pred_abs = pred_abs
+            gt_abs = gt_abs
 
-        # Ensure same number of samples
-        min_samples = min(all_pred_trajectories.size(0), all_target_trajectories.size(0))
-        all_pred_trajectories = all_pred_trajectories[:min_samples]
-        all_target_trajectories = all_target_trajectories[:min_samples]
+        if all_masks is None:
+            all_masks = torch.ones(
+                gt_abs, device=gt_abs.device
+            )
+        valid_mask_time = (all_masks.sum(dim=-1) > 0).float()
 
-        logger.info(f"Final pred shape: {all_pred_trajectories.shape}")
-        logger.info(f"Final target shape: {all_target_trajectories.shape}")
+        total_valid = all_masks.sum()
+        if total_valid <= 0:
+            logger.warning("No valid masked entries for trajectory metrics")
+            return {}
 
-        # Compute overall trajectory MSE and MAE
-        trajectory_mse = F.mse_loss(all_pred_trajectories, all_target_trajectories).item()
-        trajectory_mae = F.l1_loss(all_pred_trajectories, all_target_trajectories).item()
+        # Metrics
+        diff = pred_abs - gt_abs
+        trajectory_mse = (diff.pow(2) * all_masks).sum() / total_valid
+        trajectory_mae = (diff.abs() * all_masks).sum() / total_valid
 
-        # Compute endpoint accuracy (last trajectory point)
-        pred_endpoints = all_pred_trajectories[:, -1, :]
-        target_endpoints = all_target_trajectories[:, -1, :]
-        endpoint_mse = F.mse_loss(pred_endpoints, target_endpoints).item()
-
-        # Compute first keypoint accuracy
-        first_keypoint_mse = F.mse_loss(
-            all_pred_trajectories[:, 0, :],
-            all_target_trajectories[:, 0, :]
-        ).item()
+        # Endpoint: last valid step per sample
+        valid_counts = valid_mask_time.sum(dim=1)
+        has_valid = valid_counts > 0
+        if has_valid.any():
+            last_idx = (valid_counts.clamp(min=1) - 1).long()
+            gather_index = last_idx.view(-1, 1, 1).expand(-1, 1, pred_abs.size(-1))
+            pred_endpoints = (pred_abs * all_masks).gather(1, gather_index).squeeze(1)
+            target_endpoints = (gt_abs * all_masks).gather(1, gather_index).squeeze(1)
+            endpoint_mse = F.mse_loss(pred_endpoints[has_valid], target_endpoints[has_valid]).item()
+        else:
+            endpoint_mse = 0
 
         metrics = {
-            'trajectory_mse': trajectory_mse,
-            'trajectory_mae': trajectory_mae,
-            'endpoint_mse': endpoint_mse,
-            'first_keypoint_mse': first_keypoint_mse
+            'trajectory_mse': trajectory_mse.item() if isinstance(trajectory_mse, torch.Tensor) else trajectory_mse,
+            'trajectory_mae': trajectory_mae.item() if isinstance(trajectory_mae, torch.Tensor) else trajectory_mae,
+            'endpoint_mse': endpoint_mse
         }
-
-        logger.info(f"Computed trajectory metrics from {min_samples} samples")
 
         return metrics
 
@@ -1042,6 +1042,7 @@ class TrajectoryDiffusionTrainer:
         # For computing validation metrics
         all_predictions = []
         all_targets = []
+        all_masks = []
 
         with torch.no_grad():
             pbar = tqdm(enumerate(test_loader),
@@ -1127,6 +1128,7 @@ class TrajectoryDiffusionTrainer:
                     
                     all_predictions.append(predicted_trajectory.cpu())
                     all_targets.append(target_trajectory.cpu())
+                    all_masks.append(trajectory_mask.cpu())
 
                     pbar.set_postfix({
                         "loss": f"{total_loss.item():.4f}",
@@ -1163,7 +1165,7 @@ class TrajectoryDiffusionTrainer:
         }
 
         trajectory_metrics = self._compute_trajectory_validation_metrics(
-            all_predictions, all_targets
+            all_predictions, all_targets, all_masks
         )
         val_metrics.update(trajectory_metrics)
 
@@ -1174,8 +1176,6 @@ class TrajectoryDiffusionTrainer:
             logger.info(f"  Trajectory MAE: {val_metrics['trajectory_mae']:.6f}")
         if "endpoint_mse" in val_metrics:
             logger.info(f"  Endpoint MSE: {val_metrics['endpoint_mse']:.6f}")
-        if "first_keypoint_mse" in val_metrics:
-            logger.info(f"  First Keypoint MSE: {val_metrics['first_keypoint_mse']:.6f}")
         
         # Log to wandb
         if self.use_wandb and wandb.run:
