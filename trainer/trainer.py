@@ -1016,6 +1016,175 @@ class TrajectoryDiffusionTrainer:
         
         return grid_tensor
 
+    def test(self):
+        """Main testing loop."""
+        logger.info("Starting testing...")
+        epoch = 0
+        
+        # Create transforms
+        test_transform = create_val_transforms(self.cfg)
+
+        # Create data loaders (tweek for testing - will have 0:100 train-val split for test)
+        self.cfg.data.val_split = 1.0
+        _, test_loader = create_dataloaders(
+            self.cfg, test_transform, test_transform, world_size=self.world_size, rank=self.rank, test_mode=True  # ADD
+        )
+
+
+        """Test for one epoch."""
+        self.model.eval()
+
+        meters = {
+            'total_loss': AverageMeter(),
+            'diffusion_loss': AverageMeter(),
+        }
+
+        # For computing validation metrics
+        all_predictions = []
+        all_targets = []
+
+        with torch.no_grad():
+            pbar = tqdm(enumerate(test_loader),
+                total=len(test_loader),
+                desc="[Test]",
+                leave=False,
+                disable=not should_show_progress_bar(),  # Disable in log files
+                file=sys.stderr)  # Write to stderr if enabled
+
+            for batch_idx, batch in pbar:
+                # we filter out the data where valid_steps is smaller than 3, and  batch['movement_bool'].sum() is 0
+                # Ensure all tensors are on the same device for the mask computation
+                valid_mask = (batch['valid_steps'] > 3) & (batch['movement_bool'].sum(dim=1) > 0) & (batch['gt_mask'].sum(dim=1) > 0)
+                
+                # if number of valid_mask is zero, skip the batch and continue
+                if valid_mask.sum() == 0:
+                    continue
+                
+                # Apply mask to filter batch, handling both tensors and non-tensor data
+                filtered_batch = {}
+                for k, v in batch.items():
+                    if isinstance(v, torch.Tensor):
+                        # For tensors, apply the mask on the same device
+                        filtered_batch[k] = v[valid_mask.to(v.device)]
+                    elif isinstance(v, list):
+                        # For lists, apply the mask to get the corresponding elements
+                        filtered_batch[k] = [v[i] for i in range(len(v)) if valid_mask[i].item()]
+                    else:
+                        # For other data types, keep as is (they might be scalars or other types)
+                        filtered_batch[k] = v
+                batch = filtered_batch
+
+                images = batch['image'].to(self.device)
+                texts = batch['text']
+                gt_coords = batch['gt_xy'].to(self.device)
+                gt_mask = batch['gt_mask'].to(self.device)
+                target_trajectory = batch['trajectory'].to(self.device)
+                depth = batch['depth'].to(self.device)
+                is_depth_valid = batch['is_depth_valid']
+                trajectory_mask = batch['trajectory_mask'].to(self.device)
+                depth = batch['depth'].to(self.device)
+                is_depth_valid = batch['is_depth_valid']
+                movement_bool = batch['movement_bool'].to(self.device)
+
+                targets = {
+                    'gt_coords': gt_coords,
+                    'gt_mask': gt_mask,
+                    'trajectory': target_trajectory,
+                    'trajectory_mask': trajectory_mask
+                }
+
+                model_forward = self.model.module if hasattr(self.model, "module") else self.model
+                outputs = model_forward.forward_diffusion_training(
+                    images=images,
+                    texts=texts,
+                    depth=depth,
+                    is_depth_valid=is_depth_valid,
+                    target_trajectory=target_trajectory,
+                    first_keypoint=gt_coords,
+                    diffusion_loss=self.criterion,
+                )
+                losses = self.criterion(outputs, targets, trajectory_mask)
+                total_loss = losses["total_loss"]
+                diffusion_loss = losses.get("diffusion_loss", total_loss)
+
+                batch_size = images.size(0)
+                meters["total_loss"].update(total_loss.item(), batch_size)
+                meters["diffusion_loss"].update(diffusion_loss.item(), batch_size)
+
+                if self.cfg.train.visualize_during_validation:
+                    # Generate predictions for metrics
+                    model_predict = self.model.module if hasattr(self.model, "module") else self.model
+
+                    predicted_trajectory = model_predict.predict_trajectory(
+                        images=images,
+                        texts=texts,
+                        depth=depth,
+                        is_depth_valid=is_depth_valid,
+                        first_keypoint=gt_coords,
+                        noise_scheduler=self.criterion.noise_scheduler,
+                        guidance_scale=1.0
+                    )
+                    
+                    all_predictions.append(predicted_trajectory.cpu())
+                    all_targets.append(target_trajectory.cpu())
+
+                    pbar.set_postfix({
+                        "loss": f"{total_loss.item():.4f}",
+                        "diff_loss": f"{diffusion_loss.item():.4f}",
+                    })
+
+                    # Visualization (keep existing code)
+                    if self.is_main_process and batch_idx == 0 and epoch % getattr(self.cfg.train, "visualize_every", 20) == 0:
+                        # Use the predicted_trajectory we already computed
+                        start=time.time()
+                        val_viz_save_dir = self._create_trajectory_visualizations_v2(
+                            batch, predicted_trajectory, target_trajectory, 
+                            trajectory_mask, epoch, batch_idx, split="val_guidance_scale_1",
+                            depth=depth, is_depth_valid=is_depth_valid
+                        )
+                        end=time.time()
+                        logger.info(f"Time taken to create trajectory visualizations: {end-start:.4f}s")
+                        
+                        # Upload validation visualizations to wandb
+                        if self.use_wandb and wandb.run and val_viz_save_dir is not None:
+                            import glob
+                            viz_images = sorted(glob.glob(str(val_viz_save_dir / "*.png")))
+                            for viz_img_path in viz_images[:5]:  # Upload first 5 images
+                                img_name = Path(viz_img_path).name
+                                wandb.log({
+                                    f"val_visualizations/{img_name}": wandb.Image(viz_img_path),
+                                    'epoch': epoch,
+                                    'step': epoch * len(self.val_loader) + batch_idx
+                                })
+        # Now trajectory_metrics will have actual values
+        val_metrics = {
+            "total_loss": meters["total_loss"].avg,
+            "diffusion_loss": meters["diffusion_loss"].avg,
+        }
+
+        trajectory_metrics = self._compute_trajectory_validation_metrics(
+            all_predictions, all_targets
+        )
+        val_metrics.update(trajectory_metrics)
+
+        # Log trajectory metrics if available
+        if "trajectory_mse" in val_metrics:
+            logger.info(f"  Trajectory MSE: {val_metrics['trajectory_mse']:.6f}")
+        if "trajectory_mae" in val_metrics:
+            logger.info(f"  Trajectory MAE: {val_metrics['trajectory_mae']:.6f}")
+        if "endpoint_mse" in val_metrics:
+            logger.info(f"  Endpoint MSE: {val_metrics['endpoint_mse']:.6f}")
+        if "first_keypoint_mse" in val_metrics:
+            logger.info(f"  First Keypoint MSE: {val_metrics['first_keypoint_mse']:.6f}")
+        
+        # Log to wandb
+        if self.use_wandb and wandb.run:
+            log_dict = {f"val/{key}": value for key, value in val_metrics.items()}
+            log_dict['epoch'] = epoch
+            wandb.log(log_dict)
+
+        return val_metrics
+
     def train(self):
         """Main training loop."""
         logger.info("Starting training...")
@@ -1184,3 +1353,56 @@ class TrajectoryDiffusionTrainer:
             logger.info(f"Action statistics loaded - Min: {self.action_min}, Max: {self.action_max}")
 
 
+    def load_checkpoint_singlegpu(self, checkpoint_path: str):
+        """Load model checkpoint."""
+        checkpoint_path = Path(checkpoint_path)
+        if not checkpoint_path.exists():
+            raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+
+        checkpoint = torch.load(checkpoint_path, map_location=self.device)
+
+        ckpt_state = checkpoint['model_state_dict']
+        fixed_state = {}
+
+        for k, v in ckpt_state.items():
+            if ".module." in k:
+                new_k = k.replace(".module.", ".")
+            else:
+                new_k = k
+
+            fixed_state[new_k] = v
+
+        load_result = self.model.load_state_dict(fixed_state, strict=False)
+
+        print("=== After prefix-fix ===")
+        print("missing_keys:")
+        for k in load_result.missing_keys:
+            print(" ", k)
+        print("unexpected_keys:")
+        for k in load_result.unexpected_keys:
+            print(" ", k)
+
+        model_state = self.model.state_dict()
+        print("\nshape mismatches:")
+        for k, v in fixed_state.items():
+            if k in model_state and model_state[k].shape != v.shape:
+                print(f"  {k}: ckpt {tuple(v.shape)} vs model {tuple(model_state[k].shape)}")
+
+        # Load action statistics
+        self.action_min = checkpoint.get('action_min', None)
+        self.action_max = checkpoint.get('action_max', None)
+
+        # breakpoint()
+
+        # Load training state
+        self.start_epoch = checkpoint['epoch'] + 1
+        self.best_metric = checkpoint.get('best_metric', 0.0)
+        self.train_metrics = checkpoint.get('train_metrics', self.train_metrics)
+        self.val_metrics = checkpoint.get('val_metrics', self.val_metrics)
+
+        logger.info(f"Checkpoint loaded from {checkpoint_path}")
+        logger.info(f"Resuming from epoch {self.start_epoch}")
+
+        # Log action statistics if available
+        if self.action_min is not None and self.action_max is not None:
+            logger.info(f"Action statistics loaded - Min: {self.action_min}, Max: {self.action_max}")
