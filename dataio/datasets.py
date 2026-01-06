@@ -797,7 +797,8 @@ def create_dataloaders(
     world_size=1,
     rank=0,
     use_cache=True,
-    force_refresh=False
+    force_refresh=False,
+    test_mode=False
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Create train and validation dataloaders with caching support.
@@ -877,6 +878,19 @@ def create_dataloaders(
         shuffle_train = False  # DistributedSampler handles shuffling
 
     # Create dataloaders
+    if test_mode:
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=cfg.train.batch_size,
+            shuffle=False,
+            sampler=val_sampler,
+            num_workers=cfg.data.num_workers,
+            pin_memory=cfg.data.pin_memory,
+            collate_fn=collator,
+            drop_last=False
+        )
+        return None, val_loader
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=cfg.train.batch_size,

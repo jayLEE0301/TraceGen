@@ -4,7 +4,11 @@ Official repository for the project **TraceGen: World Modeling in 3D Trace-Space
 
 **Project Website**: [tracegen.github.io](https://tracegen.github.io/)  
 **arXiv**: [2511.21690](https://arxiv.org/abs/2511.21690)
-### 🚧 Benchmark and Dataset: Coming Soon! (Jan 5)
+### 🚀 Benchmark and Dataset is Released!
+- Training/testing labels for the five datasets (Libero, Robomimic, Droid, Epickitchen, Bridge), along with the checkpoints trained on each and their metrics, are now available. See the Hugging Face collection for all assets: https://huggingface.co/collections/furonghuang-lab/tracegen
+- The official leaderboard is hosted at:
+👉 https://huggingface.co/furonghuang-lab/TraceGenLeaderboard
+
 ![TraceGen Overview](assets/tracegen_fig2.png)
 
 
@@ -186,19 +190,55 @@ If you enable Weights & Biases logging (`logging.use_wandb=true`), you can monit
 
 ## Testing
 
-> 🚧 **Note**: Detailed testing documentation will be released soon.
+🚀 Testing on TraceGen benchmarks is released!
 
-To evaluate a trained model on a test set:
+### Evaluation Protocol
 
-```bash
-python test_example.py \
-  --config cfg/eval.yaml \
-  --resume /path/to/checkpoint.pth \
-  --test /path/to/test/dataset \
-  --output /path/to/output/directory
+This dataset defines the official evaluation protocol for the TraceGen benchmark.
+Models are evaluated on 5 environments with the following metrics:
+- Mean Squared Error (MSE)
+- Mean Absolute Error (MAE)
+- Endpoint MSE
+
+The official leaderboard is hosted at:
+👉 https://huggingface.co/furonghuang-lab/TraceGenLeaderboard
+
+### Test on TraceGen benchmark
+Multi-GPU
 ```
-
-
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+torchrun --standalone --nproc_per_node=4 \
+  test_benchmark.py \
+  --config cfg/train.yaml \
+  --override \
+  train.batch_size=8 \
+  train.lr_decoder=1.5e-4 \
+  model.decoder.num_layers=6 \
+  model.decoder.num_attention_heads=12 \
+  model.decoder.latent_dim=768 \
+  data.num_workers=4 \
+  hardware.mixed_precision=true \
+  logging.use_wandb=true \
+  logging.log_every=2000 \
+  --resume {path_to_pretrained_checkpoint}
+```
+Single-GPU
+```
+export CUDA_VISIBLE_DEVICES=0
+python test_benchmark.py \
+  --config cfg/train.yaml \
+  --override \
+  train.batch_size=8 \
+  train.lr_decoder=1.5e-4 \
+  model.decoder.num_layers=6 \
+  model.decoder.num_attention_heads=12 \
+  model.decoder.latent_dim=768 \
+  data.num_workers=4 \
+  hardware.mixed_precision=true \
+  logging.use_wandb=true \
+  logging.log_every=2000 \
+  --resume {path_to_pretrained_checkpoint}
+```
 
 ## Repository Structure
 
