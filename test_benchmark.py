@@ -144,7 +144,11 @@ def main():
     
     # Resume from checkpoint if provided
     if args.resume:
-        trainer.load_checkpoint(args.resume)
+        # Auto-select loader based on distributed setup
+        if world_size > 1:
+            trainer.load_checkpoint(args.resume)
+        else:
+            trainer.load_checkpoint_singlegpu(args.resume)
         all_actions_min, all_actions_max = trainer.action_min, trainer.action_max
     else:
         # get statistics for action
