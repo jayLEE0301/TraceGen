@@ -178,7 +178,7 @@ torchrun --standalone --nproc_per_node=4 \
   --resume {path_to_pretrained_checkpoint}
 ```
 
-> **Note**: Replace `{path_to_pretrained_checkpoint}` with the path to your downloaded TraceGen checkpoint.
+> **Note**: Replace `{path_to_pretrained_checkpoint}` with the path to your downloaded TraceGen checkpoint. (you can find pretrained TraceGen on TraceForge-123k at [https://huggingface.co/JayLee131/TraceGen](https://huggingface.co/JayLee131/TraceGen))
 
 
 ### Monitoring Training
@@ -202,6 +202,25 @@ Models are evaluated on 5 environments with the following metrics:
 
 The official leaderboard is hosted at:
 👉 https://huggingface.co/furonghuang-lab/TraceGenLeaderboard
+
+| Environment | Metric       | TraceGen (×1e−2) |
+| ----------- | ------------ | ---------------- |
+| EpicKitchen | MSE          | 0.445            |
+|             | MAE          | 2.721            |
+|             | Endpoint MSE | 0.791            |
+| Droid       | MSE          | 0.206            |
+|             | MAE          | 1.289            |
+|             | Endpoint MSE | 0.285            |
+| Bridge      | MSE          | 0.653            |
+|             | MAE          | 2.419            |
+|             | Endpoint MSE | 0.607            |
+| Libero      | MSE          | 0.276            |
+|             | MAE          | 1.442            |
+|             | Endpoint MSE | 0.385            |
+| Robomimic   | MSE          | TBD              |
+|             | MAE          | TBD              |
+|             | Endpoint MSE | TBD              |
+
 
 ### Test on TraceGen benchmark
 Multi-GPU
