@@ -7,12 +7,12 @@ Official repository for the project **TraceGen: World Modeling in 3D Trace-Space
 ### 🚀 Benchmark and Dataset is Released!
 - Training/testing labels for the five datasets (Libero, Robomimic, Droid, Epickitchen, Bridge), along with the checkpoints trained on each and their metrics, are now available. See the Hugging Face collection for all assets: https://huggingface.co/collections/furonghuang-lab/tracegen
 - The official leaderboard is hosted at:
-👉 https://huggingface.co/furonghuang-lab/TraceGenLeaderboard
+👉 https://huggingface.co/furonghuang-lab/TraceGenBenchmark
 
 ![TraceGen Overview](assets/tracegen_fig2.png)
 
 
-## <img src="assets/trace_forge_logo.png" alt="TraceGen" height="20"> TraceForge
+## <img src="assets/trace_forge_logo.png" alt="TraceGen" height="20"> TraceForge: How to Generate Your Own Dataset
 ![TraceForge Overview](assets/TraceForge.png)
 For the data generation pipeline **TraceForge** that prepares cross-embodiment 3D trace dataset for TraceGen training, please refer to  
 **[TraceForge GitHub Repository](https://github.com/Yoonkyo/TraceForge)**.
@@ -201,7 +201,7 @@ Models are evaluated on 5 environments with the following metrics:
 - Endpoint MSE
 
 The official leaderboard is hosted at:
-👉 https://huggingface.co/furonghuang-lab/TraceGenLeaderboard
+👉 https://huggingface.co/furonghuang-lab/TraceGenBenchmark
 
 | Environment | Metric       | TraceGen (×1e−2) |
 | ----------- | ------------ | ---------------- |
@@ -217,9 +217,9 @@ The official leaderboard is hosted at:
 | Libero      | MSE          | 0.276            |
 |             | MAE          | 1.442            |
 |             | Endpoint MSE | 0.385            |
-| Robomimic   | MSE          | TBD              |
-|             | MAE          | TBD              |
-|             | Endpoint MSE | TBD              |
+| Robomimic   | MSE          | 0.138            |
+|             | MAE          | 1.416            |
+|             | Endpoint MSE | 0.151            |
 
 
 ### Test on TraceGen benchmark
@@ -279,14 +279,6 @@ Trace_gen/
 └── README.md                     # This file
 ```
 
-
-
-## Roadmap
-
-- [x] Release TraceGen training code
-- [x] Release TraceForge pipeline code
-- [ ] Release TraceGen pretrained checkpoints & test code documentation
-- [ ] Release Dataset & Benchmark
 
 ## 📖 Citation
 
