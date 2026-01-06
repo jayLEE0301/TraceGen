@@ -465,9 +465,7 @@ class TrajectoryDiffusionTrainer:
         }
 
         # For computing validation metrics
-        all_predictions = []
-        all_targets = []
-        all_masks = []
+        traj_mse_list, traj_mae_list, endpoint_list = [], [], []
         with torch.no_grad():
             pbar = tqdm(enumerate(self.val_loader),
                 total=len(self.val_loader),
@@ -550,9 +548,16 @@ class TrajectoryDiffusionTrainer:
                         guidance_scale=1.0
                     )
                     
-                    all_predictions.append(predicted_trajectory.cpu())
-                    all_targets.append(target_trajectory.cpu())
-                    all_masks.append(trajectory_mask.cpu())
+                    batch_metrics = self._compute_trajectory_validation_metrics(
+                        [predicted_trajectory], [target_trajectory], [trajectory_mask]
+                    )
+                    if batch_metrics:
+                        if "trajectory_mse" in batch_metrics:
+                            traj_mse_list.append(batch_metrics["trajectory_mse"])
+                        if "trajectory_mae" in batch_metrics:
+                            traj_mae_list.append(batch_metrics["trajectory_mae"])
+                        if "endpoint_mse" in batch_metrics:
+                            endpoint_list.append(batch_metrics["endpoint_mse"])
                     pbar.set_postfix({
                         "loss": f"{total_loss.item():.4f}",
                         "diff_loss": f"{diffusion_loss.item():.4f}",
@@ -587,10 +592,12 @@ class TrajectoryDiffusionTrainer:
             "diffusion_loss": meters["diffusion_loss"].avg,
         }
 
-        trajectory_metrics = self._compute_trajectory_validation_metrics(
-            all_predictions, all_targets, all_masks
-        )
-        val_metrics.update(trajectory_metrics)
+        if traj_mse_list:
+            val_metrics["trajectory_mse"] = float(np.mean(traj_mse_list))
+        if traj_mae_list:
+            val_metrics["trajectory_mae"] = float(np.mean(traj_mae_list))
+        if endpoint_list:
+            val_metrics["endpoint_mse"] = float(np.mean(endpoint_list))
 
         return val_metrics
 
@@ -881,9 +888,7 @@ class TrajectoryDiffusionTrainer:
         }
 
         # For computing validation metrics
-        all_predictions = []
-        all_targets = []
-        all_masks = []
+        traj_mse_list, traj_mae_list, endpoint_list = [], [], []
 
         with torch.no_grad():
             pbar = tqdm(enumerate(test_loader),
@@ -967,9 +972,16 @@ class TrajectoryDiffusionTrainer:
                         guidance_scale=1.0
                     )
                     
-                    all_predictions.append(predicted_trajectory.cpu())
-                    all_targets.append(target_trajectory.cpu())
-                    all_masks.append(trajectory_mask.cpu())
+                    batch_metrics = self._compute_trajectory_validation_metrics(
+                        [predicted_trajectory], [target_trajectory], [trajectory_mask]
+                    )
+                    if batch_metrics:
+                        if "trajectory_mse" in batch_metrics:
+                            traj_mse_list.append(batch_metrics["trajectory_mse"])
+                        if "trajectory_mae" in batch_metrics:
+                            traj_mae_list.append(batch_metrics["trajectory_mae"])
+                        if "endpoint_mse" in batch_metrics:
+                            endpoint_list.append(batch_metrics["endpoint_mse"])
 
                     pbar.set_postfix({
                         "loss": f"{total_loss.item():.4f}",
@@ -1005,10 +1017,12 @@ class TrajectoryDiffusionTrainer:
             "diffusion_loss": meters["diffusion_loss"].avg,
         }
 
-        trajectory_metrics = self._compute_trajectory_validation_metrics(
-            all_predictions, all_targets, all_masks
-        )
-        val_metrics.update(trajectory_metrics)
+        if traj_mse_list:
+            val_metrics["trajectory_mse"] = float(np.mean(traj_mse_list))
+        if traj_mae_list:
+            val_metrics["trajectory_mae"] = float(np.mean(traj_mae_list))
+        if endpoint_list:
+            val_metrics["endpoint_mse"] = float(np.mean(endpoint_list))
 
         # Log trajectory metrics if available
         if "trajectory_mse" in val_metrics:
