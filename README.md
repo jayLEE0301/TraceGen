@@ -92,7 +92,7 @@ data/
 
 
 
-
+<a id="training"></a>
 ## Training <img src="assets/trace_gen_logo.png" alt="TraceGen" height="20"> TraceGen
 ![TraceGen Overview](assets/TraceGen.png)
 ### Important Configuration Guidelines
